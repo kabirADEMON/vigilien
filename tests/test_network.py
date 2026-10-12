@@ -76,14 +76,14 @@ def test_refuse_les_adresses_internes():
     assert not network.is_public_host("127.0.0.1")
     assert not network.is_public_host("intranet.local", lambda h: ["10.0.0.5"])
     assert network.is_public_host("exemple.com", PUBLIC)
-    with pytest.raises(PermissionError):
+    with pytest.raises(network.BlockedAddress, match="adresse interne"):
         network.follow_redirects("http://intranet.local/", FakeSession({}), 1, lambda h: ["192.168.0.1"])
 
 
 def test_redirection_vers_le_reseau_interne_bloquee():
     session = FakeSession({"https://piege.example/": FakeResponse(302, {"Location": "http://routeur.local/"})})
     resolve = lambda host: ["192.168.1.1"] if host == "routeur.local" else ["93.184.216.34"]  # noqa: E731
-    with pytest.raises(PermissionError):
+    with pytest.raises(network.BlockedAddress):
         network.follow_redirects("https://piege.example/", session, 1, resolve)
     assert session.calls == ["https://piege.example/"]  # l'adresse interne n'a jamais été contactée
 
@@ -129,3 +129,18 @@ def test_chaine_incomplete_moins_grave_qu_un_certificat_invalide():
     assert network.certificate_error_signal(incomplete).code == "chaine_incomplete"
     assert network.certificate_error_signal(incomplete).points == 5
     assert network.certificate_error_signal(expired).code == "certificat_invalide"
+
+
+def test_session_verrouillee_refuse_une_adresse_interne():
+    session = network.pinned_session(lambda host: ["10.0.0.7"])
+    with pytest.raises(network.BlockedAddress):
+        session.get("http://intranet.example/", timeout=1)
+
+
+def test_dns_rebinding_bloque_a_la_connexion():
+    # Le nom paraît public lors du contrôle, puis pointe vers le réseau interne au moment de se connecter.
+    answers = iter([["93.184.216.34"], ["127.0.0.1"]])
+    resolve = lambda host: next(answers)  # noqa: E731
+    assert network.is_public_host("rebind.example", resolve)
+    with pytest.raises(network.BlockedAddress):
+        network.pinned_session(resolve).get("http://rebind.example/", timeout=1)

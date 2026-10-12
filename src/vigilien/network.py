@@ -12,6 +12,9 @@ from datetime import datetime, timezone
 from urllib.parse import urljoin, urlsplit
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.connection import HTTPConnection, HTTPSConnection
+from urllib3.connectionpool import HTTPConnectionPool, HTTPSConnectionPool
 
 from .signals import Signal
 from .url_checks import parse
@@ -43,6 +46,74 @@ def _looks_like_ip(host: str) -> bool:
         return True
     except ValueError:
         return False
+
+
+class BlockedAddress(Exception):
+    """Connexion refusée : le nom pointe vers une adresse interne.
+
+    Volontairement pas une sous-classe d'OSError, que urllib3 transformerait en simple
+    « erreur de connexion » : on veut pouvoir dire pourquoi le lien n'a pas été visité.
+    """
+
+
+def public_addresses(host: str, resolve: Resolver = system_resolver) -> list[str]:
+    try:
+        addresses = [host.strip("[]")] if _looks_like_ip(host) else resolve(host)
+    except OSError as e:
+        raise BlockedAddress(f"nom introuvable : {host}") from e
+    if not addresses or not all(ipaddress.ip_address(a).is_global for a in addresses):
+        raise BlockedAddress(f"adresse interne : {host}")
+    return addresses
+
+
+def connect_public(host: str, port: int, timeout: float | None, resolve: Resolver = system_resolver,
+                   source_address=None) -> socket.socket:
+    """Ouvre une socket vers une adresse publique déjà vérifiée : IPv4 d'abord, puis les suivantes."""
+    addresses = sorted(public_addresses(host, resolve), key=lambda a: ":" in a)
+    error: OSError | None = None
+    for ip in addresses:
+        try:
+            return socket.create_connection((ip, port), timeout, source_address=source_address)
+        except OSError as e:
+            error = e
+    raise error
+
+
+def pinned_session(resolve: Resolver = system_resolver) -> requests.Session:
+    """Session HTTP qui vérifie l'adresse au moment même de la connexion.
+
+    Vérifier un nom puis laisser la bibliothèque le résoudre à nouveau laisse une fenêtre :
+    entre les deux, le nom peut pointer ailleurs (DNS rebinding). Ici la socket s'ouvre sur
+    l'adresse qui vient d'être contrôlée ; le certificat reste vérifié avec le vrai nom.
+    """
+
+    class Pinned:
+        def _new_conn(self):
+            timeout = self.timeout if isinstance(self.timeout, (int, float)) else None
+            return connect_public(self._dns_host, self.port, timeout, resolve, self.source_address)
+
+    class PinnedHTTP(Pinned, HTTPConnection):
+        pass
+
+    class PinnedHTTPS(Pinned, HTTPSConnection):
+        pass
+
+    class HTTPPool(HTTPConnectionPool):
+        ConnectionCls = PinnedHTTP
+
+    class HTTPSPool(HTTPSConnectionPool):
+        ConnectionCls = PinnedHTTPS
+
+    class Adapter(HTTPAdapter):
+        def init_poolmanager(self, *args, **kwargs):
+            super().init_poolmanager(*args, **kwargs)
+            self.poolmanager.pool_classes_by_scheme = {"http": HTTPPool, "https": HTTPSPool}
+
+    session = requests.Session()
+    session.trust_env = False  # pas de proxy implicite qui contournerait le contrôle
+    session.mount("http://", Adapter())
+    session.mount("https://", Adapter())
+    return session
 
 
 # ---------- Âge du domaine (RDAP, successeur normalisé de WHOIS) ----------
@@ -80,14 +151,12 @@ def age_signals(created: datetime | None, now: datetime) -> list[Signal]:
 # ---------- Redirections ----------
 
 def follow_redirects(url: str, session: requests.Session, timeout: float,
-                     resolve: Resolver = system_resolver) -> list[str]:
+                     resolve: Resolver = system_resolver, max_redirects: int = MAX_REDIRECTS) -> list[str]:
     """Suit les redirections HTTP une à une et renvoie la chaîne d'adresses visitées."""
     chain = [url]
     current = url
-    for _ in range(MAX_REDIRECTS):
-        host = urlsplit(current).hostname or ""
-        if not is_public_host(host, resolve):
-            raise PermissionError(f"adresse interne ou introuvable : {host}")
+    for _ in range(max_redirects):
+        public_addresses(urlsplit(current).hostname or "", resolve)  # lève BlockedAddress, avec la raison
         resp = session.get(current, allow_redirects=False, stream=True, timeout=timeout,
                            headers={"User-Agent": USER_AGENT})
         resp.close()  # seuls le code et les en-têtes nous intéressent
@@ -120,9 +189,9 @@ def redirect_signals(chain: list[str]) -> list[Signal]:
 
 # ---------- Certificat ----------
 
-def fetch_certificate(host: str, port: int, timeout: float) -> dict:
+def fetch_certificate(host: str, port: int, timeout: float, resolve: Resolver = system_resolver) -> dict:
     context = ssl.create_default_context()
-    with socket.create_connection((host, port), timeout=timeout) as sock:
+    with connect_public(host, port, timeout, resolve) as sock:
         with context.wrap_socket(sock, server_hostname=host) as tls:
             return tls.getpeercert()
 

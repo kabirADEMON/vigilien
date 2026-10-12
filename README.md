@@ -23,6 +23,32 @@ $ vigilien "http://mtn.bj.verification-compte.xyz/momo/login"
      +10  Extension de domaine très utilisée par l'hameçonnage (.xyz)
 ```
 
+## Interface web
+
+Une page où l'on colle un lien et où le résultat s'affiche avec ses raisons, en clair ou en sombre,
+sur ordinateur comme sur téléphone. Un lien `/?url=…` lance directement l'analyse, pour la partager.
+
+```bash
+pip install -e ".[web]"
+uvicorn app:app --reload          # puis http://127.0.0.1:8000
+```
+
+L'API est aussi utilisable seule :
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/analyse -H "Content-Type: application/json"      -d '{"url": "https://exemple.com/login"}'
+```
+
+Un service public qui visite des liens pour ses visiteurs est une cible ; il est donc bridé :
+
+- **10 analyses par minute et par visiteur**, délai de 3 s par connexion, 5 redirections au plus ;
+- **adresse verrouillée** : la connexion s'ouvre sur l'adresse qui vient d'être contrôlée, ce qui
+  empêche un nom de pointer vers le réseau interne entre le contrôle et la connexion (DNS rebinding) ;
+- **en-têtes de sécurité** stricts (CSP sans script externe, pas d'intégration dans un cadre) ;
+- le texte des résultats est inséré sans jamais interpréter de HTML : un lien piégé ne peut pas
+  injecter de code dans la page ;
+- les liens analysés ne sont pas enregistrés.
+
 ## Installation
 
 Python 3.10 ou plus récent.
@@ -90,9 +116,8 @@ structurée au lieu d'un texte libre différent selon chaque registre.
   maintenues. Une marque absente de la liste ne sera pas reconnue.
 - **Faux positifs possibles** : un site légitime peut cumuler des mots-clés (`/login`) et un
   certificat récent. C'est pourquoi chaque point est expliqué.
-- Entre la vérification de l'adresse et la connexion, un nom de domaine pourrait changer d'adresse
-  (DNS rebinding). Pour un usage en ligne de commande, le risque est faible ; un service web
-  exposé devrait épingler l'adresse résolue.
+- La limite de 10 analyses par minute est tenue en mémoire : sur un hébergement à plusieurs
+  instances, chacune compte de son côté. C'est un garde-fou, pas une protection absolue.
 
 ## Vérifié sur de vrais sites
 
@@ -107,9 +132,10 @@ détectés, et `http://127.0.0.1` n'est jamais contacté.
 pytest
 ```
 
-23 tests, **sans aucune connexion** : les réponses réseau (RDAP, redirections, certificats) sont
-simulées. Ils couvrent chaque signal, le blocage des adresses internes (y compris par redirection),
-le calcul du score et la ligne de commande. Ils tournent sur GitHub Actions à chaque envoi.
+30 tests, **sans aucune connexion** : les réponses réseau (RDAP, redirections, certificats) sont
+simulées. Ils couvrent chaque signal, le blocage des adresses internes (y compris par redirection
+et par DNS rebinding), le calcul du score, la ligne de commande et l'API web (limite par visiteur,
+en-têtes de sécurité). Ils tournent sur GitHub Actions à chaque envoi.
 
 ## Structure
 
@@ -121,6 +147,8 @@ src/vigilien/
   signals.py      structure d'un signal, score et verdict
   data.py         listes de référence à maintenir
   cli.py          ligne de commande
+  web/            API FastAPI et page web (static/)
+app.py            point d'entrée pour l'hébergement
 ```
 
 ## Licence

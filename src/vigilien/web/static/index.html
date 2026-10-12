@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>vigilien · Ce lien est-il une arnaque ?</title>
+  <meta name="description" content="Collez un lien reçu par WhatsApp ou SMS : vigilien évalue le risque d'hameçonnage et explique pourquoi." />
+  <link rel="stylesheet" href="/static/style.css" />
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <main class="wrap">
+    <header class="head">
+      <p class="brand">vigilien</p>
+      <h1>Ce lien est-il <em>une arnaque&nbsp;?</em></h1>
+      <p class="lead">
+        Collez un lien reçu par WhatsApp, SMS ou email. vigilien évalue le risque d'hameçonnage
+        et vous explique pourquoi, avant que vous cliquiez.
+      </p>
+    </header>
+
+    <form id="form" class="form" novalidate>
+      <label for="url" class="sr-only">Lien à analyser</label>
+      <input id="url" name="url" type="text" inputmode="url" autocomplete="off" spellcheck="false"
+             placeholder="https://…" maxlength="2048" required />
+      <button id="go" type="submit">Analyser</button>
+    </form>
+
+    <div class="examples">
+      <span>Exemples :</span>
+      <button type="button" class="chip" data-url="http://mtn.bj.verification-compte.xyz/momo/login">faux lien MTN</button>
+      <button type="button" class="chip" data-url="https://mtn.bj@site-pirate.com/">piège du « @ »</button>
+      <button type="button" class="chip" data-url="https://service-public.bj">service-public.bj</button>
+    </div>
+
+    <p id="status" class="status" role="status" aria-live="polite"></p>
+
+    <section id="result" class="result" hidden tabindex="-1" aria-labelledby="verdict">
+      <div class="score-row">
+        <p class="score"><span id="score">0</span><small>/100</small></p>
+        <div>
+          <p class="muted">Risque</p>
+          <p id="verdict" class="verdict"></p>
+        </div>
+      </div>
+      <dl id="facts" class="facts"></dl>
+      <h2 class="label">Pourquoi</h2>
+      <ul id="signals" class="signals"></ul>
+      <p class="note">
+        Un score faible n'est pas une garantie : un vrai site piraté peut passer.
+        En cas de doute, ne saisissez ni code ni mot de passe, et contactez l'organisme par un autre moyen.
+      </p>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <p>
+      Outil défensif : il lit les en-têtes des réponses, sans télécharger les pages ni exécuter leur code.
+      Les liens analysés ne sont pas enregistrés.
+    </p>
+    <p>
+      <a href="https://github.com/kabirADEMON/vigilien" rel="noreferrer">Code source</a> ·
+      par <a href="https://portfolio-six-opal-16.vercel.app" rel="noreferrer">Kabir ADEMON</a>
+    </p>
+  </footer>
+</body>
+</html>

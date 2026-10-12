@@ -11,7 +11,7 @@ from .data import BRANDS, GOV_SUFFIX, KEYWORDS, SHORTENERS, SUSPICIOUS_TLDS
 from .signals import Signal
 
 # Liste des suffixes embarquée : pas de téléchargement au premier lancement.
-_extract = tldextract.TLDExtract(suffix_list_urls=())
+_extract = tldextract.TLDExtract(suffix_list_urls=(), cache_dir=None)  # rien à écrire sur le disque
 
 
 @dataclass(frozen=True)

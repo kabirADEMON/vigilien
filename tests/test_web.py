@@ -30,13 +30,22 @@ def test_lien_illisible_et_trop_long(client):
     assert client.post("/api/analyse", json={"url": "a" * 3000, "hors_ligne": True}).status_code == 422
 
 
-def test_limite_par_visiteur(client):
+def test_limite_par_visiteur_non_contournable(client):
     body = {"url": "https://exemple.com", "hors_ligne": True}
-    headers = {"X-Forwarded-For": "203.0.113.9"}
-    codes = [client.post("/api/analyse", json=body, headers=headers).status_code for _ in range(4)]
+    # Inventer une adresse différente à chaque requête ne contourne pas la limite.
+    codes = [
+        client.post("/api/analyse", json=body, headers={"X-Forwarded-For": f"203.0.113.{i}"}).status_code
+        for i in range(4)
+    ]
     assert codes == [200, 200, 200, 429]
-    # un autre visiteur n'est pas bloqué
-    assert client.post("/api/analyse", json=body, headers={"X-Forwarded-For": "198.51.100.4"}).status_code == 200
+
+
+def test_derriere_un_proxy_seule_la_derniere_adresse_compte(monkeypatch):
+    from starlette.requests import Request
+
+    monkeypatch.setattr(web, "TRUST_PROXY", True)
+    scope = {"type": "http", "client": ("10.0.0.1", 1), "headers": [(b"x-forwarded-for", b"1.2.3.4, 198.51.100.4")]}
+    assert web.client_ip(Request(scope)) == "198.51.100.4"
 
 
 def test_fenetre_glissante():

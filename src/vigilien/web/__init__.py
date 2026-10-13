@@ -3,6 +3,7 @@
 Lancer en local : uvicorn vigilien.web:app --reload
 """
 
+import os
 import threading
 import time
 from collections import defaultdict, deque
@@ -69,10 +70,18 @@ class Demande(BaseModel):
     hors_ligne: bool = False
 
 
+# À activer seulement derrière un proxy de confiance qui écrit X-Forwarded-For (VIGILIEN_TRUST_PROXY=1).
+# Sinon, un visiteur pourrait inventer une nouvelle adresse à chaque requête et contourner la limite.
+TRUST_PROXY = os.environ.get("VIGILIEN_TRUST_PROXY") == "1"
+
+
 def client_ip(request: Request) -> str:
-    # Derrière l'hébergeur, l'adresse réelle du visiteur est dans X-Forwarded-For.
-    forwarded = request.headers.get("x-forwarded-for", "")
-    return forwarded.split(",")[0].strip() or (request.client.host if request.client else "inconnu")
+    direct = request.client.host if request.client else "inconnu"
+    if not TRUST_PROXY:
+        return direct
+    # Le proxy ajoute l'adresse qu'il voit en fin de liste : seule valeur que le client ne contrôle pas.
+    forwarded = [part.strip() for part in request.headers.get("x-forwarded-for", "").split(",") if part.strip()]
+    return forwarded[-1] if forwarded else direct
 
 
 @app.middleware("http")

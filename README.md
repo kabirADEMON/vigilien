@@ -41,7 +41,9 @@ curl -X POST http://127.0.0.1:8000/api/analyse -H "Content-Type: application/jso
 
 Un service public qui visite des liens pour ses visiteurs est une cible ; il est donc bridé :
 
-- **10 analyses par minute et par visiteur**, délai de 3 s par connexion, 5 redirections au plus ;
+- **10 analyses par minute et par visiteur**, délai de 3 s par connexion, 5 redirections au plus ; l'en-tête
+  `X-Forwarded-For`, que le visiteur peut inventer, est ignoré sauf derrière un proxy de confiance
+  (`VIGILIEN_TRUST_PROXY=1`, et alors seule la dernière adresse compte) ;
 - **adresse verrouillée** : la connexion s'ouvre sur l'adresse qui vient d'être contrôlée, ce qui
   empêche un nom de pointer vers le réseau interne entre le contrôle et la connexion (DNS rebinding) ;
 - **en-têtes de sécurité** stricts (CSP sans script externe, pas d'intégration dans un cadre) ;
@@ -132,7 +134,7 @@ détectés, et `http://127.0.0.1` n'est jamais contacté.
 pytest
 ```
 
-30 tests, **sans aucune connexion** : les réponses réseau (RDAP, redirections, certificats) sont
+31 tests, **sans aucune connexion** : les réponses réseau (RDAP, redirections, certificats) sont
 simulées. Ils couvrent chaque signal, le blocage des adresses internes (y compris par redirection
 et par DNS rebinding), le calcul du score, la ligne de commande et l'API web (limite par visiteur,
 en-têtes de sécurité). Ils tournent sur GitHub Actions à chaque envoi.
